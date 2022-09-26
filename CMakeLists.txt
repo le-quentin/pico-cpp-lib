@@ -12,6 +12,8 @@ project(
         DESCRIPTION "A c++ library to control various electronic components with Raspberry Pi Pico" 
         LANGUAGES C CXX ASM
 )
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 if (PICO_SDK_VERSION_STRING VERSION_LESS "1.3.0")
     message(FATAL_ERROR "Raspberry Pi Pico SDK version 1.3.0 (or later) required. Your version is ${PICO_SDK_VERSION_STRING}")
