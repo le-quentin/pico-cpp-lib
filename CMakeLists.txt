@@ -23,11 +23,12 @@ pico_sdk_init()
 
 add_library(pico-cpp-lib STATIC
         src/FourDigitsDisplay.cpp
+        src/PushButton.cpp
 )
 set_target_properties(pico-cpp-lib PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
-    PUBLIC_HEADER include/FourDigitsDisplay.h)
+    PUBLIC_HEADER "include/FourDigitsDisplay.h;include/PushButton.h")
 
 configure_file(pico-cpp-lib.pc.in pico-cpp-lib.pc @ONLY)
 
