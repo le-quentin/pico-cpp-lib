@@ -38,6 +38,6 @@ target_link_libraries(pico-cpp-lib pico_stdlib)
 # install the lib
 install(TARGETS pico-cpp-lib
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pico-cpp-lib)
 install(FILES ${CMAKE_BINARY_DIR}/pico-cpp-lib.pc
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)

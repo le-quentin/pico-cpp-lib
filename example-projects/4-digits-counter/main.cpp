@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <array>
 
-#include <FourDigitsDisplay.h>
+#include <pico-cpp-lib/FourDigitsDisplay.h>
 
 const uint ALIM_PIN = 28;
 const uint BUTTON_PIN = 15;
