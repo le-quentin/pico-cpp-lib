@@ -10,6 +10,10 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+.cache
 
 # all build dirs
 build/
+
+# .ccls file, setting the c++ language server in IDE
+.ccls
