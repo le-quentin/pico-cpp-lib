@@ -57,14 +57,36 @@ constexpr const char* parsing_state_str(ReceiverParsingState state) {
 typedef struct ReceiverState {
     ReceiverParsingState parsingState = ReceiverParsingState::IDLE;
     uint8_t currentSignal = 1;
+    uint64_t currentParsingStartTime = 0;
     uint64_t lastSignalChangeTime = 0;
     uint64_t lastPulseDuration = 0;
     uint32_t data = 0;
     uint8_t bitsRead = 0;
 } ReceiverState;
 
+#define ADDRESS_BYTE(data) (uint8_t)((data & 0xFF000000) >> 24)
+#define INVERTED_ADDRESS_BYTE(data) (uint8_t)((data & 0x00FF0000) >> 16)
+#define COMMAND_BYTE(data) (uint8_t)((data & 0x0000FF00) >> 8)
+#define INVERTED_COMMAND_BYTE(data) (uint8_t)(data & 0x000000FF)
+
+class IR_Frame {
+    public:
+        const uint8_t address;
+        const uint8_t command;
+        const uint64_t startTime; 
+        const bool valid;
+        IR_Frame(uint32_t data, uint64_t startTime) : 
+            startTime(startTime),
+            address(data >> 24), 
+            command(data << 16 >> 24),
+            valid(ADDRESS_BYTE(data) == INVERTED_ADDRESS_BYTE(~data) && COMMAND_BYTE(data) == INVERTED_COMMAND_BYTE(~data)) {
+                DEBUG_LOG("Validating IR_FRAME########\nAddress: %#10x, Control: %#10x\nCommand: %#10x, Control: %#10x\n", 
+                    ADDRESS_BYTE(data), INVERTED_ADDRESS_BYTE(~data), COMMAND_BYTE(data), INVERTED_COMMAND_BYTE(~data));
+            }
+};
+
 ReceiverState receiver;
-std::queue<uint32_t> irDataFifo;
+std::queue<IR_Frame> irDataFifo;
 
 void assertGpioLevelAndTransitionToState(uint8_t expectedGpioLevel, ReceiverParsingState state) {
     if (expectedGpioLevel != receiver.currentSignal) {
@@ -77,11 +99,7 @@ void assertGpioLevelAndTransitionToState(uint8_t expectedGpioLevel, ReceiverPars
     receiver.parsingState = state;
 }
 
-void IR_receive_interrupts(uint8_t gpioLevel) {
-    //TODO add two controls
-    //1) gpioLevel being inconsistent with state should invalidate the data and wait for new frame (ERROR state)
-    //2) validate data with inverted bytes, and encapsulate the data in a type to tell if there's an error, and read different fields
-    
+void IR_parse_new_signalLevel(uint8_t gpioLevel) {
     //TODO extract this in a IRemote/NEC driver. Another layer on top for my specific remote (TDJL20KEYS)
     //Challenge => how to handle the static/global data (=the fifo) in a clean fashion with libs?
     uint64_t now = time_us_64();
@@ -91,6 +109,8 @@ void IR_receive_interrupts(uint8_t gpioLevel) {
             assertGpioLevelAndTransitionToState(0, ReceiverParsingState::START_BURST);
             break;
         case ReceiverParsingState::START_BURST:
+            receiver.currentParsingStartTime = receiver.lastSignalChangeTime;
+            DEBUG_LOG("Parsing start time: %lld\n", receiver.currentParsingStartTime);
             assertGpioLevelAndTransitionToState(1, ReceiverParsingState::START_SPACE);
             break;
         case ReceiverParsingState::START_SPACE:
@@ -110,7 +130,13 @@ void IR_receive_interrupts(uint8_t gpioLevel) {
             receiver.data |= (receivedBit << (receiver.bitsRead++));
             DEBUG_LOG("Received data: %#10x, bits: %d\n", receiver.data, receiver.bitsRead);
             if (receiver.bitsRead >= 32) {
-                irDataFifo.push(receiver.data);
+                DEBUG_LOG("Parsing start time: %lld\n", receiver.currentParsingStartTime);
+                IR_Frame newFrame(receiver.data, receiver.currentParsingStartTime);
+                if (newFrame.valid) {
+                    irDataFifo.push(newFrame);
+                } else {
+                    printf("ERROR: Got an invalid IR data frame: %#10x\n", receiver.data);
+                }
                 receiver.data = 0;
                 receiver.bitsRead = 0;
                 receiver.parsingState = ReceiverParsingState::REPEAT_BITS;
@@ -131,11 +157,7 @@ void IR_receive_interrupts(uint8_t gpioLevel) {
 }
 
 void handle_incoming_IR_data(uint gpio, uint32_t events) {
-    IR_receive_interrupts(events & GPIO_IRQ_EDGE_RISE ? 1 : 0);
-    if (!irDataFifo.empty()) {
-        printf("New element in fifo: %#10x\n", irDataFifo.front());
-        irDataFifo.pop();
-    }
+    IR_parse_new_signalLevel(events & GPIO_IRQ_EDGE_RISE ? 1 : 0);
 }
 
 int main() {
@@ -151,7 +173,12 @@ int main() {
     gpio_set_irq_enabled_with_callback(INFRARED_RECEIVER_GPIO_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &handle_incoming_IR_data);
 
     while(true) {
-        //nothing
+        if (!irDataFifo.empty()) {
+            IR_Frame received = irDataFifo.front();
+            printf("New element in fifo: [Address=%d, Command=%d, Time=%lld ms ago]\n", received.address, received.command, (time_us_64() - received.startTime) / 1000);
+            irDataFifo.pop();
+        }
+        sleep_us(1);
     }
 }
 
