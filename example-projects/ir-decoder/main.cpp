@@ -86,7 +86,35 @@ class IR_Frame {
 };
 
 ReceiverState receiver;
-std::queue<IR_Frame> irDataFifo;
+
+template <typename T> class IRQ_FIFO {
+    public: 
+        IRQ_FIFO() : m_fifo(), empty(true) {}
+
+        void push(T msg) {
+            //TODO add mutex
+            m_fifo.push(msg);
+            this->empty = false;
+        }
+
+        bool hasMessages() const {
+            return !empty;
+        }
+        
+        T pop() {
+            //TODO add mutex
+            T msg = m_fifo.front();
+            m_fifo.pop();
+            this->empty = m_fifo.empty();
+            return msg;
+        }
+
+    private:
+        std::queue<T> m_fifo;
+        volatile bool empty;
+};
+
+IRQ_FIFO<IR_Frame> irDataFifo;
 
 void assertGpioLevelAndTransitionToState(uint8_t expectedGpioLevel, ReceiverParsingState state) {
     if (expectedGpioLevel != receiver.currentSignal) {
@@ -173,12 +201,10 @@ int main() {
     gpio_set_irq_enabled_with_callback(INFRARED_RECEIVER_GPIO_PIN, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &handle_incoming_IR_data);
 
     while(true) {
-        if (!irDataFifo.empty()) {
-            IR_Frame received = irDataFifo.front();
+        if (irDataFifo.hasMessages()) {
+            IR_Frame received = irDataFifo.pop();
             printf("New element in fifo: [Address=%d, Command=%d, Time=%lld ms ago]\n", received.address, received.command, (time_us_64() - received.startTime) / 1000);
-            irDataFifo.pop();
         }
-        sleep_us(1);
     }
 }
 
