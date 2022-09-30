@@ -16,6 +16,7 @@ pico_sdk_init()
 
 add_executable(ir-decoder
         main.cpp
+        ir-remotes/protocols/NEC.cpp
         )
 
 set(COMPILE_DEFINITIONS "" CACHE STRING "A semicolon separated list of pre-processor definitions")
