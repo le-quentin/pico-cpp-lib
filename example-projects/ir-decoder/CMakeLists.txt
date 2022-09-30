@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.12)
 # Pull in SDK (must be before project)
 include(../../pico_sdk_import.cmake)
 
-project(4-digits-counter C CXX ASM)
+project(ir-decoder C CXX ASM)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
@@ -18,6 +18,8 @@ add_executable(ir-decoder
         main.cpp
         )
 
+set(COMPILE_DEFINITIONS "" CACHE STRING "A semicolon separated list of pre-processor definitions")
+target_compile_definitions(ir-decoder PRIVATE "${COMPILE_DEFINITIONS}")
 add_compile_options(-Wall
         -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
         -Wno-maybe-uninitialized

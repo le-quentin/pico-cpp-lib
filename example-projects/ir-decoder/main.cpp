@@ -14,6 +14,11 @@
 #include <string>
 #include <queue>
 
+#ifdef DEBUG
+    #define DEBUG_LOG(args...) printf(args);
+#else
+    #define DEBUG_LOG(args...)
+#endif
 
 static int chars_rxed = 0;
 static uint8_t lastChar = 'a';
@@ -26,87 +31,51 @@ const uint STOP_DURATION_US = 100000;
 //Start listening to the IR receiver output, and parses the 4 bytes of data
 // Address - Inverted address - Command - Inverted command
 
-uint64_t wait_for_1() {
-    uint64_t start = time_us_64();
-    uint64_t lowDuration;
-    bool timeout = false;
-    while(gpio_get(INFRARED_RECEIVER_GPIO_PIN) == 0 && !timeout) {
-        lowDuration = time_us_64() - start;
-        timeout = lowDuration > STOP_DURATION_US; //End of frame, exit and return parsed data
-    }
-    return lowDuration;
-}
-
-uint64_t wait_for_0() {
-    uint64_t start = time_us_64();
-    uint64_t highDuration;
-    bool timeout = false;
-    while(gpio_get(INFRARED_RECEIVER_GPIO_PIN) == 1 && !timeout) {
-        highDuration = time_us_64() - start;
-    }
-    return highDuration;
-}
-
-uint32_t IR_receive() {
-    uint32_t data = 0;
-    uint8_t receivedBitsCount = 0;
-
-    while(gpio_get(INFRARED_RECEIVER_GPIO_PIN) == 0); //Skipping the START bursts
-    printf("Start burst ended\n");
-    wait_for_0(); //Skipping the waiting time after the START bursts
-    printf("Wait after start burst ended\n");
-
-    while (true) {
-        //A bit will always start with a low burst, skip it
-        uint64_t pulseStartTime = time_us_64();
-        uint64_t pulseEndTime;
-        while(gpio_get(INFRARED_RECEIVER_GPIO_PIN) == 0) {
-            pulseEndTime = time_us_64();
-        }
-        printf("Bit start burst ended\n");
-
-        //Then, the duration of the high signal after the burst will give us the data
-        // d(high) = d(low) => 0 
-        // d(high) = 3*d(low) => 1
-        uint64_t highDuration = wait_for_0();
-        //TODO validate with inverted data 
-
-        if (highDuration > STOP_DURATION_US) {
-            printf("timeout, returning\n");
-            return data;
-        }
-        printf("Bit wait after start burst ended\n");
-
-        uint64_t pulseDuration = pulseEndTime - pulseStartTime;
-        uint8_t receivedBit = 0;
-        if(highDuration >= 2 * pulseDuration) { // If it's more than 2x the duration, we reckon we got a 3*d(low)
-            receivedBit = 1;
-        } 
-        printf("New bit: %d\n", receivedBit);
-
-        // We set the bit with an OR mask, with only the current bit set
-        printf("Using mask for new bit: %#08x\n", receivedBit << receivedBitsCount);
-        data |= (receivedBit << (receivedBitsCount++));
-        printf("New data: %#08x, new bit count: %d\n", data, receivedBitsCount);
-    }
-}
-
-typedef enum class ReceiverState {
+typedef enum class ReceiverParsingState {
     IDLE,
     START_BURST,
     START_SPACE,
     BIT_BURST,
     BIT_SPACE,
-    REPEAT_BITS
+    REPEAT_BITS,
+    ERROR
+} ReceiverParsingState;
+
+constexpr const char* parsing_state_str(ReceiverParsingState state) {
+    switch (state) {
+        case ReceiverParsingState::IDLE: return "Idle";
+        case ReceiverParsingState::START_BURST: return "Start Burst";
+        case ReceiverParsingState::START_SPACE: return "Start Space";
+        case ReceiverParsingState::BIT_BURST: return "Bit Burst";
+        case ReceiverParsingState::BIT_SPACE: return "Bit Space";
+        case ReceiverParsingState::REPEAT_BITS: return "Repeat Bits";
+        case ReceiverParsingState::ERROR: return "Error";
+    }
+    return "ERROR:UNKOWN";
+}
+
+typedef struct ReceiverState {
+    ReceiverParsingState parsingState = ReceiverParsingState::IDLE;
+    uint8_t currentSignal = 1;
+    uint64_t lastSignalChangeTime = 0;
+    uint64_t lastPulseDuration = 0;
+    uint32_t data = 0;
+    uint8_t bitsRead = 0;
 } ReceiverState;
 
-ReceiverState currentState = ReceiverState::IDLE;
-uint64_t lastSignalChangeTime = 0;
-uint64_t lastPulseDuration = 0;
-uint32_t data = 0;
-uint8_t bitsRead = 0;
-
+ReceiverState receiver;
 std::queue<uint32_t> irDataFifo;
+
+void assertGpioLevelAndTransitionToState(uint8_t expectedGpioLevel, ReceiverParsingState state) {
+    if (expectedGpioLevel != receiver.currentSignal) {
+        DEBUG_LOG("In state %s, got gpio new level %d but expected %d. Switching to ERROR.\n", parsing_state_str(receiver.parsingState), receiver.currentSignal, expectedGpioLevel);
+        receiver.parsingState = ReceiverParsingState::ERROR;
+        return;
+    }
+
+    DEBUG_LOG("%s=>%s\n", parsing_state_str(receiver.parsingState), parsing_state_str(state));
+    receiver.parsingState = state;
+}
 
 void IR_receive_interrupts(uint8_t gpioLevel) {
     //TODO add two controls
@@ -116,52 +85,53 @@ void IR_receive_interrupts(uint8_t gpioLevel) {
     //TODO extract this in a IRemote/NEC driver. Another layer on top for my specific remote (TDJL20KEYS)
     //Challenge => how to handle the static/global data (=the fifo) in a clean fashion with libs?
     uint64_t now = time_us_64();
-    switch(currentState) {
-        case ReceiverState::IDLE:
-            if(gpioLevel == 0) currentState = ReceiverState::START_BURST;
+    receiver.currentSignal = gpioLevel;
+    switch(receiver.parsingState) {
+        case ReceiverParsingState::IDLE:
+            assertGpioLevelAndTransitionToState(0, ReceiverParsingState::START_BURST);
             break;
-        case ReceiverState::START_BURST:
-            if(gpioLevel == 1) currentState = ReceiverState::START_SPACE;
+        case ReceiverParsingState::START_BURST:
+            assertGpioLevelAndTransitionToState(1, ReceiverParsingState::START_SPACE);
             break;
-        case ReceiverState::START_SPACE:
-            currentState = ReceiverState::BIT_BURST;
+        case ReceiverParsingState::START_SPACE:
+            assertGpioLevelAndTransitionToState(0, ReceiverParsingState::BIT_BURST);
             break;
-        case ReceiverState::BIT_BURST:
-            lastPulseDuration = now - lastSignalChangeTime;
-            currentState = ReceiverState::BIT_SPACE;
+        case ReceiverParsingState::BIT_BURST:
+            receiver.lastPulseDuration = now - receiver.lastSignalChangeTime;
+            assertGpioLevelAndTransitionToState(1, ReceiverParsingState::BIT_SPACE);
             break;
-        case ReceiverState::BIT_SPACE: {
+        case ReceiverParsingState::BIT_SPACE: {
+            assertGpioLevelAndTransitionToState(0, ReceiverParsingState::BIT_BURST);
             uint8_t receivedBit = 0;
-            if( now - lastSignalChangeTime >= 2 * lastPulseDuration) { // If it's more than 2x the duration, we reckon we got a 3*d(low)
+            if( now - receiver.lastSignalChangeTime >= 2 * receiver.lastPulseDuration) { // If it's more than 2x the duration, we reckon we got a 3*d(low)
                 receivedBit = 1;
             } 
             // We set the bit with an OR mask, with only the current bit set
-            data |= (receivedBit << (bitsRead++));
-            if (bitsRead >= 32) {
-                irDataFifo.push(data);
-                data = 0;
-                bitsRead = 0;
-                currentState = ReceiverState::REPEAT_BITS;
-            } else {
-                currentState = ReceiverState::BIT_BURST;
+            receiver.data |= (receivedBit << (receiver.bitsRead++));
+            DEBUG_LOG("Received data: %#10x, bits: %d\n", receiver.data, receiver.bitsRead);
+            if (receiver.bitsRead >= 32) {
+                irDataFifo.push(receiver.data);
+                receiver.data = 0;
+                receiver.bitsRead = 0;
+                receiver.parsingState = ReceiverParsingState::REPEAT_BITS;
             }
             break;
         }
-        case ReceiverState::REPEAT_BITS: {
-            if (now - lastSignalChangeTime > STOP_DURATION_US) {
+        case ReceiverParsingState::REPEAT_BITS:
+        case ReceiverParsingState::ERROR: {
+            if (gpioLevel == 0 && now - receiver.lastSignalChangeTime > STOP_DURATION_US) {
                 //It's the start of a new frame. This last signal was the start burst.
-                currentState = ReceiverState::START_BURST;
+                DEBUG_LOG("%s=>%s\n", parsing_state_str(receiver.parsingState), parsing_state_str(ReceiverParsingState::START_BURST));
+                receiver.parsingState = ReceiverParsingState::START_BURST;
             }
             break;
         }
     }
-    lastSignalChangeTime = now;
+    receiver.lastSignalChangeTime = now;
 }
 
 void handle_incoming_IR_data(uint gpio, uint32_t events) {
-    //printf("\nNew interrupt!\n");
     IR_receive_interrupts(events & GPIO_IRQ_EDGE_RISE ? 1 : 0);
-    //printf("State: %s, Received data: %#10x, bits: %d\n", stateStr.c_str(), data, bitsRead);
     if (!irDataFifo.empty()) {
         printf("New element in fifo: %#10x\n", irDataFifo.front());
         irDataFifo.pop();
