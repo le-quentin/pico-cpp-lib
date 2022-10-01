@@ -1,13 +1,7 @@
 #include "pico/stdlib.h"
-#include <stdio.h>
+#include <iostream>
 
-#include "ir-remotes/protocols/NEC.h"
-
-#ifdef DEBUG
-    #define DEBUG_LOG(args...) printf(args);
-#else
-    #define DEBUG_LOG(args...)
-#endif
+#include "ir-remotes/TDJL20KEYS.h"
 
 const uint ALIM_PIN = 28;
 const uint INFRARED_RECEIVER_GPIO_PIN = 26;
@@ -20,12 +14,13 @@ int main() {
     gpio_set_dir(ALIM_PIN, GPIO_OUT);
     gpio_put(ALIM_PIN, 1);
 
-    ir::nec::initOnGpio(INFRARED_RECEIVER_GPIO_PIN);
+    ir::Tdjl20Keys remote(INFRARED_RECEIVER_GPIO_PIN);
 
     while(true) {
-        if (ir::nec::outFifo().hasMessages()) {
-            ir::nec::DataFrame received = ir::nec::outFifo().pop();
-            printf("New element in fifo: [Address=%d, Command=%d, Time=%lld ms ago]\n", received.address, received.command, (time_us_64() - received.startTime) / 1000);
+        if (remote.hasEvent()) {
+            ir::Tdjl20Keys::ButtonEvent event = remote.nextEvent();
+            std::cout << "Button [" << ir::Tdjl20Keys::buttonStr(event.button) << "] was pressed ";
+            std::cout << (time_us_64() - event.time) / 1000 << " ms ago" << std::endl;
         }
     }
 }

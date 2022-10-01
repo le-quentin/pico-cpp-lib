@@ -16,6 +16,7 @@ pico_sdk_init()
 
 add_executable(ir-decoder
         main.cpp
+        ir-remotes/TDJL20KEYS.cpp
         ir-remotes/protocols/NEC.cpp
         )
 
