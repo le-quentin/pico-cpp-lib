@@ -22,13 +22,15 @@ include(GNUInstallDirs)
 pico_sdk_init()
 
 add_library(pico-cpp-lib STATIC
-        src/FourDigitsDisplay.cpp
-        src/PushButton.cpp
+    src/FourDigitsDisplay.cpp
+    src/PushButton.cpp
+    src/ir-remotes/TDJL20KEYS.cpp
+    src/ir-remotes/protocols/NEC.cpp
 )
 set_target_properties(pico-cpp-lib PROPERTIES
     VERSION ${PROJECT_VERSION}
     SOVERSION 1
-    PUBLIC_HEADER "include/FourDigitsDisplay.h;include/PushButton.h")
+    PUBLIC_HEADER "include/IrqFifo.h;include/FourDigitsDisplay.h;include/PushButton.h;include/ir-remotes/TDJL20KEYS.h;include/ir-remotes/protocols/NEC.h")
 
 configure_file(pico-cpp-lib.pc.in pico-cpp-lib.pc @ONLY)
 
@@ -38,8 +40,12 @@ target_include_directories(pico-cpp-lib PUBLIC include)
 target_link_libraries(pico-cpp-lib pico_stdlib)
 
 # install the lib
-install(TARGETS pico-cpp-lib
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pico-cpp-lib)
+ install(TARGETS pico-cpp-lib
+     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY "include/" # source directory
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/pico-cpp-lib" # target directory
+        FILES_MATCHING # install only matched files
+        PATTERN "*.h" # select header files
+)
 install(FILES ${CMAKE_BINARY_DIR}/pico-cpp-lib.pc
     DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig)

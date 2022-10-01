@@ -1,4 +1,4 @@
-#include "TDJL20KEYS.h"
+#include "ir-remotes/TDJL20KEYS.h"
 #define BUTTON_STR_CASE(enumVal) case Button::#enumVal: return "#enum";
 
 ir::Tdjl20Keys::Tdjl20Keys(uint gpio) {

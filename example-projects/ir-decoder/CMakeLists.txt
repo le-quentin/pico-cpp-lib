@@ -16,8 +16,6 @@ pico_sdk_init()
 
 add_executable(ir-decoder
         main.cpp
-        ir-remotes/TDJL20KEYS.cpp
-        ir-remotes/protocols/NEC.cpp
         )
 
 set(COMPILE_DEFINITIONS "" CACHE STRING "A semicolon separated list of pre-processor definitions")
@@ -45,5 +43,4 @@ target_link_libraries(ir-decoder pico-cpp-lib)
 
 # Add USB CDC drivers to enable usb stdio, allowing reset by usb
 pico_enable_stdio_usb(ir-decoder 1)
-pico_enable_stdio_uart(ir-decoder 0)
 

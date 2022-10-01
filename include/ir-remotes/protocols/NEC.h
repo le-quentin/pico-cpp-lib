@@ -1,5 +1,5 @@
 #include "pico/stdlib.h"
-#include "../../IrqFifo.h"
+#include "IrqFifo.h"
 
 namespace ir {
     namespace nec {

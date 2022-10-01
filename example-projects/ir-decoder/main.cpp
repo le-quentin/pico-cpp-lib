@@ -1,7 +1,7 @@
 #include "pico/stdlib.h"
 #include <iostream>
 
-#include "ir-remotes/TDJL20KEYS.h"
+#include "pico-cpp-lib/ir-remotes/TDJL20KEYS.h"
 
 const uint ALIM_PIN = 28;
 const uint INFRARED_RECEIVER_GPIO_PIN = 26;

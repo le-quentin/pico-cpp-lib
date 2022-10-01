@@ -1,4 +1,4 @@
-#include "NEC.h"
+#include "ir-remotes/protocols/NEC.h"
 #include "pico/stdlib.h"
 #include <stdio.h>
 
