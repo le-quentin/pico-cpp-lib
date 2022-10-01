@@ -18,6 +18,8 @@ add_executable(buzzer
         main.cpp
         )
 
+set(COMPILE_DEFINITIONS "" CACHE STRING "A semicolon separated list of pre-processor definitions")
+
 add_compile_options(-Wall
         -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
         -Wno-maybe-uninitialized
@@ -41,5 +43,4 @@ target_link_libraries(buzzer pico-cpp-lib)
 
 # Add USB CDC drivers to enable usb stdio, allowing reset by usb
 pico_enable_stdio_usb(buzzer 1)
-pico_enable_stdio_uart(buzzer 0)
 
